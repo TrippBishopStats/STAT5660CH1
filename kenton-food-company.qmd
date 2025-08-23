@@ -1,0 +1,69 @@
+---
+title: "Kenton Food Company"
+format: html
+editor: source
+---
+
+```{r initial setup}
+library(tidyverse)
+
+matrix_trace <- function(mtx) {
+  return(sum(diag(mtx)))
+}
+
+df_cereal <- read_csv("KentonFoodData.csv") |> 
+  mutate(
+    store = as_factor(store),
+    design = as_factor(design)
+  )
+
+
+head(df_cereal)
+
+store_names <- levels(df_cereal$store)
+design_names <- levels(df_cereal$design)
+
+cols <- store_names |> length()
+rows <- design_names |> length()
+
+matrix(df_cereal$sales, ncol=cols, nrow=rows, byrow=TRUE,
+       dimnames=list(design_names, store_names))
+
+
+
+fit <- lm(sales~design, data=df_cereal)
+
+cbind(summary(fit)$coefficients, confint(fit))
+
+anova(fit)
+```
+
+```{r}
+
+df_cereal <- na.omit(df_cereal)
+n <- nrow(df_cereal)
+
+X <- model.matrix(~1+design, data=df_cereal)
+y <- matrix(df_cereal$sales, ncol=1)
+y_t <- t(y)
+
+X_t <- t(X)
+scaling <- solve(X_t%*%X)
+H <- X%*%scaling%*%X_t
+I <- diag(rep(1,times=n))
+
+B <- scaling%*%X_t%*%y
+
+# The rank of the matrix of the quadratic form tells us the degrees of freedom
+# associated with the statistic, so it's an easy way to determine what we need
+# in the denominator.
+MSE <- (y_t%*%(I-H)%*%y)/matrix_trace(I-H)
+
+J <- matrix(rep(1, times=n^2), ncol=n)
+MSR <- y_t%*%(H - 1/n*J)%*%y/matrix_trace(H-1/n*J)
+
+MSR/MSE
+```
+
+
+
