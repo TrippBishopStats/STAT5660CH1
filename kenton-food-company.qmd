@@ -2,11 +2,15 @@
 title: "Kenton Food Company"
 format: html
 editor: source
+execute: 
+  warning: false
+  messages: false
 ---
 
 ```{r initial setup}
 library(tidyverse)
 
+# a simple helper function
 matrix_trace <- function(mtx) {
   return(sum(diag(mtx)))
 }
@@ -17,9 +21,13 @@ df_cereal <- read_csv("KentonFoodData.csv") |>
     design = as_factor(design)
   )
 
-
 head(df_cereal)
+```
 
+Now, to confirm that we have the correct data, create a matrix display it with
+labels to make it easier to understand.
+
+```{r}
 store_names <- levels(df_cereal$store)
 design_names <- levels(df_cereal$design)
 
@@ -28,41 +36,79 @@ rows <- design_names |> length()
 
 matrix(df_cereal$sales, ncol=cols, nrow=rows, byrow=TRUE,
        dimnames=list(design_names, store_names))
+```
 
+Fit a linear model, look at the coefficients, and look at the omnibus test that
+the means are equal.
 
-
+```{r}
 fit <- lm(sales~design, data=df_cereal)
-
 cbind(summary(fit)$coefficients, confint(fit))
-
 anova(fit)
 ```
 
-```{r}
+Now replicate the output of `lm()` and `anova()` with matrix operations "by
+hand".
 
-df_cereal <- na.omit(df_cereal)
+Start by organising the raw data.
+
+```{r}
+df_cereal <- na.omit(df_cereal) # have to drop missing values or it will choke
 n <- nrow(df_cereal)
 
 X <- model.matrix(~1+design, data=df_cereal)
 y <- matrix(df_cereal$sales, ncol=1)
-y_t <- t(y)
+```
 
+Now that we have defined the basic data, we need to generate some of the
+derivative matrices that will be used repeatedly.
+
+```{r}
 X_t <- t(X)
-scaling <- solve(X_t%*%X)
+y_t <- t(y)
+scaling <- solve(X_t%*%X) # (X_t%*%X)^)(-1)
 H <- X%*%scaling%*%X_t
 I <- diag(rep(1,times=n))
-
-B <- scaling%*%X_t%*%y
-
-# The rank of the matrix of the quadratic form tells us the degrees of freedom
-# associated with the statistic, so it's an easy way to determine what we need
-# in the denominator.
-MSE <- (y_t%*%(I-H)%*%y)/matrix_trace(I-H)
-
 J <- matrix(rep(1, times=n^2), ncol=n)
-MSR <- y_t%*%(H - 1/n*J)%*%y/matrix_trace(H-1/n*J)
+```
 
-MSR/MSE
+Now, we can make our parameter estimates, compute the mean squared error and
+mean square residuals to get an F statistic for the omnibus test that the means
+are all equal (ie that there is just one global mean and the design coefficients
+are all zero).
+
+The rank of the matrix of the quadratic form tells us the degrees of freedom
+associated with the statistic, so it's an easy way to determine what we need
+in the denominator.
+
+```{r}
+df_reduced <- matrix_trace(I-H)
+df_full <- matrix_trace(H-1/n*J)
+MSE <- (y_t%*%(I-H)%*%y)/df_reduced
+MSR <- y_t%*%(H - 1/n*J)%*%y/df_full
+
+F_stat <- MSR/MSE
+```
+For this test, $F(`r df_full`,`r df_reduced`)=`r round(F_stat,3)`$.
+
+Now, estimate the population parameters and compute 95% confidence intervals.
+
+```{r}
+B <- scaling%*%X_t%*%y
+S_b <- as.numeric(MSE)*scaling
+t_crit <- qt(0.975, df=15)
+std_errs <- sqrt(diag(S_b))
+
+parameter_estimates <- cbind(
+  Estimate = B,
+  std_err = std_errs,
+  `2.5%` = B - t_crit*std_errs,
+  `97.5%` = B + t_crit*std_errs
+)
+
+colnames(parameter_estimates) <- c("Estimate","Std Errs", "2.5%","97.5%")
+
+parameter_estimates
 ```
 
 
