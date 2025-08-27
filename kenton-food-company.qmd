@@ -88,6 +88,8 @@ MSE <- (y_t%*%(I-H)%*%y)/df_reduced
 MSR <- y_t%*%(H - 1/n*J)%*%y/df_full
 
 F_stat <- MSR/MSE
+pval <- pf(F_stat, df_full, df_reduced, lower.tail=FALSE)
+
 ```
 For this test, $F(`r df_full`,`r df_reduced`)=`r round(F_stat,3)`$.
 
