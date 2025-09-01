@@ -1,19 +1,19 @@
+# a simple helper function
+matrix_trace <- function(mtx) {
+  return(sum(diag(mtx)))
+}
+
 my_lm <- function(y, X, alpha=0.05) {
-  if (!is.vector(y)) {
-    stop("y must be a vector")
-  } else if (!is.matrix(X)) {
-    stop("X must be a matrix")
-  } else if(alpha <= 0 | alpha >= 1) {
-    stop("confidence level must be between 0 and 1")
+  
+  if (is.vector(y)) {
+    y <- matrix(y, ncol=1)
   }
   
   # set up the atomic pieces that we're going to use multiple times 
-  y <- matrix(y, ncol=1) # make the response a proper column vector
   y_t <- t(y)
   X_t <- t(X)
   scaling <- solve(X_t%*%X)
   n <- nrow(y)
-  I <- diag(1, ncol=n, nrow=n)
   
   # the reduced model is just a mean (null) model so the hat matrix is
   # equivalent to 1/n*J
@@ -28,10 +28,9 @@ my_lm <- function(y, X, alpha=0.05) {
   
   # we need to estimate the mean square error first, so that we can use the
   # result in other estimates.
-  quad_err <- (I - H_f)
-  
-  SSE <- y_t%*%quad_err%*%y
-  MSE <- (SSE/sum(diag(quad_err))) |> as.numeric()
+  SSE <- y_t%*%y - y_t%*%H_f%*%y
+  df_e <- n - matrix_trace(H_f)
+  MSE <- (SSE/df_e) |> as.numeric()
   
   # estimate the covariance matrix of the parameter estimates
   covB <- MSE*scaling
@@ -41,40 +40,93 @@ my_lm <- function(y, X, alpha=0.05) {
   quad_residuals <- (H_f - H_r)
   
   SSR <- y_t%*%quad_residuals%*%y
-  MSR <- SSR/sum(diag(quad_residuals))
+  MSR <- SSR/matrix_trace(quad_residuals)
   
-  t <- B/seB
-  pvals <- 2*pt(abs(t), df=(n-1), lower.tail=FALSE)
+  tests <- test.o(B, seB, alpha, df_e)
   
-  t_crit <- qt(1-alpha/2, df=(n-1))
-  
-  CI_lwr <- B - t_crit*seB
-  CI_upr <- B + t_crit*seB
+  df <- c(
+    n - 1,
+    df_e,
+    n - 1 - df_e
+  )
   
   mtx_estimates <- cbind(
     "estimates" = B,
     "stderr" = seB,
-    "t" = t,
-    "p" = pvals,
-    "CI_lwr" = CI_lwr,
-    "CI_upr" = CI_upr 
+    "t" = tests$t,
+    "p" = tests$pvals,
+    "CI_lwr" = tests$lwr,
+    "CI_upr" = tests$upr
   )
   
   colnames(mtx_estimates) <- c("Estimate", "Std err", "t", "Pr(>|t|)", "2.5%", "97.5%")
   
   return(
     list(
-      "estimates" = mtx_estimates,
+      "coefficients" = B,
+      "summary_table" = mtx_estimates,
       "residuals" = resids,
+      "cov" = covB,
       "MSE" = MSE,
-      "MSR" = MSR
+      "MSR" = MSR,
+      "SSTO" = SSR + SSE,
+      "df" = df
     )
   )
 }
 
-# test harness
-y <- df_cereal$sales
+my_anova <- function(y, X_f, X_r=NULL) {
+  if(is.vector(y)) {
+    y <- matrix(y, ncol=1)
+  }
+  n <- nrow(y)
+  
+  # create the transposes that we'll need
+  y_t <- t(y)
+  X_f_t <- t(X_f)
+  X_r_t <- t(X_r)
+  
+  # compute hat matrices for the full and reduced models
+  H_f <- X_f%*%solve(X_f_t%*%X_f)%*%X_f_t
+  H_r <- X_r%*%solve(X_r_t%*%X_r)%*%X_r_t
+  
+  # now compute the Mean Deviation of the two models and the MSE of the full
+  # model
+  df <- c(matrix_trace(H_f - H_r), n - matrix_trace(H_f))
+  SSD <- (y_t%*%(H_f - H_r)%*%y)
+  MSD <- SSD/df[1]
+  SSE_f <- y_t%*%(y - H_f%*%y)
+  MSE_f <- SSE_f/df[2]
+  SSTO <- sum((y-mean(y))^2)
+  
+  return(
+    list(
+      "F" = MSD/MSE_f,
+      "df" = df,
+      "MSD" = MSD,
+      "SSE_F" = SSE_f,
+      "SSD" = SSD,
+      "SSTO" = SSTO
+    )
+  )
+}
 
-my_lm(y, X)
-
-# lm(sales~design, data=df_cereal) |> summary()
+# perform hypothesis testing on the estimates
+test.o <- function(B, seB, alpha, df_e) {
+  t <- B/seB
+  pvals <- 2*pt(abs(t), df=df_e, lower.tail=FALSE)
+  
+  t_crit <- qt(1-alpha/2, df=df_e)
+  
+  CI_lwr <- B - t_crit*seB
+  CI_upr <- B + t_crit*seB
+  
+  return(
+    list(
+      "t" = t,
+      "lwr" = CI_lwr,
+      "upr" = CI_upr,
+      "pvals" = pvals
+    )
+  )
+}
