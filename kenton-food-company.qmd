@@ -112,6 +112,66 @@ colnames(parameter_estimates) <- c("Estimate","Std Errs", "2.5%","97.5%")
 
 parameter_estimates
 ```
+## Using the new tools
+
+```{r}
+library(kableExtra)
+source("my_lm.R")
+
+my.fit <- my_lm(as.vector(y), X)
+my.fit$estimates |> kable()
+```
+
+### Formal hypothesis test of $\beta_1$
+
+**Step 1** - State the formal hypothesis  
+
+$$
+\begin{aligned}
+H_0 &: \beta_1 = 0\\
+H_a &: \beta_1 \neq 0
+\end{aligned}
+$$
+with $\alpha=0.05$.
+
+**Step 2** - Determine test statistic and critical value  
+
+```{r}
+df <- my.fit$df[2]
+t_2 <- my.fit$estimates[2,3] |> round(digits=3)
+t_crit <- qt(0.975, df=df) |> round(digits=3)
+```
+We have already calculated the test statistic for $\hat{\beta_1}$ and it is
+displayed in the table above. With this data, $t_{`r df`} = `r t_2`$. The
+critical value for this test is $t^*_{`r df`}=`r t_crit`$.
+
+**Step 3** - Decision  
+With $|t^*_{`r df`}|=`r t_crit` > |t_{`r df`}|=`r t_2`$, we fail to reject 
+$H_0: \beta_1 = 0$ at the $\alpha=0.05$ significance level.
+
+**Step 4** - Conclusion  
+*Statistical* - There is not sufficient evidence to support the claim that 
+$\beta_1 \neq 0$ with 95% confidence.
+
+*Practical* - There may not be a linear relationship between `sales` and package
+design 2, with 95% confidence. In other words, it does not look like design 2
+impacts the sales of cereal.
 
 
+```{r}
+my.fit$estimates
+
+lwr <- my.fit$estimates[2,5]
+upr <- my.fit$estimates[2,6]
+
+lwr
+upr
+```
+
+```{r}
+
+
+
+
+```
 
